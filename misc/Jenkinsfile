@@ -1,19 +1,56 @@
-node {
-   def commit_id
-   stage('Preparation') {
-     checkout scm
-     sh "git rev-parse --short HEAD > .git/commit-id"                        
-     commit_id = readFile('.git/commit-id').trim()
-   }
+
+
+pipeline {
+  environment {
+    registry = "prathibha/docker-nodejs"
+    registryCredential = 'dockerhub'
+    dockerImage = ''
+  }
+  
+  agent any
+  stages {
+    stage('checkout scm') {
+      steps {
+	  
+        git ''
+		sh "git rev-parse --short HEAD > .git/commit-id"                        
+        commit_id = readFile('.git/commit-id').trim()
+      }
+    }
+	
+	## Nodejs Test
    stage('test') {
-     nodejs(nodeJSInstallationName: 'nodejs') {
+      steps{
+        script {
+		nodejs(nodeJSInstallationName: 'nodejs') {
        sh 'npm install --only=dev'
        sh 'npm test'
-     }
-   }
-   stage('docker build/push') {
-     docker.withRegistry('https://index.docker.io/v1/', 'dockerhub') {
-       def app = docker.build("wardviaene/docker-nodejs-demo:${commit_id}", '.').push()
-     }
-   }
+        }
+      }
+    }
+	}
+    ##Building Docker images
+    stage('Building image') {
+      steps{
+        script {
+          dockerImage = docker.build registry + ":$commit-id"
+        }
+      }
+    }
+	##Uploading Docker images into DockerHub
+    stage('Push Image') {
+      steps{
+        script {
+          docker.withRegistry( '', registryCredential ) {
+            dockerImage.push()
+          }
+        }
+      }
+    }
+    stage('Remove Unused docker image') {
+      steps{
+        sh "docker rmi $registry:$commit-id"
+      }
+    }
+  }
 }
